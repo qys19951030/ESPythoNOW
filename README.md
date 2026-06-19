@@ -87,6 +87,42 @@ MQTT. Work in progress
 python3 ESPythoNOW.py --interface=wlan1 --mqtt_host=192.168.0.10 --mqtt_port=1883 --mqtt_username=test_user --mqtt_password=test_password --mqtt_keepalive=60 --mqtt_raw=false --mqtt_hex=True --mqtt_json=true
 ```
 
+ESPythoNOW acts as an MQTT <-> ESP-NOW bridge. The base topic defaults to `ESPythoNOW-<local_mac>` (or the configured `base_topic`).
+
+### Receiving ESP-NOW over MQTT (RX -> publish)
+Incoming ESP-NOW messages are published under:
+```
+<base_topic>/<sender_mac>/<receiver_mac>/raw   # raw bytes
+<base_topic>/<sender_mac>/<receiver_mac>/hex   # space-separated hex text, e.g. "de ad be ef"
+<base_topic>/<sender_mac>/<receiver_mac>/json   # decoded JSON if a matching decoder exists
+```
+Messages with empty payloads are discarded.
+
+### Sending ESP-NOW over MQTT (subscribe -> TX)
+Subscribe to `<base_topic>/send/#` and publish to one of the send topics below. The MQTT payload is forwarded to the target ESP-NOW peer via `send()`.
+
+| Topic | Payload | Behavior |
+| --- | --- | --- |
+| `<base_topic>/send/<mac>` | raw bytes | The payload bytes are sent to `<mac>` verbatim. |
+| `<base_topic>/send/<mac>/hex` | hex text | The hex text is decoded into bytes (spaces and colons tolerated) and sent to `<mac>`. |
+
+`<mac>` may be in `AA:BB:CC:DD:EE:FF` or `AABBCCDDEEFF` form.
+
+Invalid inputs are silently rejected and will **not** trigger an ESP-NOW send:
+- Empty payload
+- Invalid MAC address
+- Invalid hex text (non-hex characters, odd length)
+- Topics that do not match the `<base_topic>/send/<mac>` or `<base_topic>/send/<mac>/hex` convention
+
+Example (`mosquitto_pub`):
+```
+# send raw bytes 0x01 0x02 0x03 to AA:BB:CC:DD:EE:FF
+mosquitto_pub -h 192.168.0.10 -t "ESPythoNOW-AA:BB:CC:DD:EE:FF/send/AA:BB:CC:DD:EE:FF" -m $'\x01\x02\x03'
+
+# send the same bytes via hex text
+mosquitto_pub -h 192.168.0.10 -t "ESPythoNOW-AA:BB:CC:DD:EE:FF/send/AA:BB:CC:DD:EE:FF/hex" -m "01 02 03"
+```
+
 ---
 Assorted Details
 ---
@@ -115,6 +151,19 @@ Assorted Details
   * Returns
     * If not blocking, will always return **True**.
     * If blocking, will return **True** if message(s) have delivery confirmed by remote peer.
+
+* espnow.add_signature() - Register a message decoder signature and callback
+  * Arguments
+    * **name** - Either a string (built-in decoder name like `"wizmote"`, `"wiz_motion"`) or a dict (custom profile)
+    * **callback** - Function to execute when a matching message is received
+    * **data** - Return data type for callback: `"dict"`, `"json"`, `"hex"`, or `None` for raw bytes
+    * **dedupe** - Duplicate filter configuration:
+      * `False` or `0`: Disable duplicate filtering
+      * `True`: Enable with default buffer size (10)
+      * Integer N: Enable with custom buffer size of N recent messages
+      * `None` (default): Use the profile's built-in dedupe setting
+  * Returns
+    * `True` on success, `False` if the decoder name is not found
 
 ---
 Message Signatures/Decoders / callback data types

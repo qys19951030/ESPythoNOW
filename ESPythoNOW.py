@@ -64,6 +64,9 @@ class ESPythoNow:
     self.block_on_broadcast  = False                                     # Enable block on BROADCAST send, disabled by default. Some ESP-NOW versions will send ACK when receiving BROADCAST
     self.prepared            = False                                     # Required tasks have been completed, or not
     self.use_mqtt            = False                                     # MQTT will be used
+    self.mqtt_topic_base     = f"ESPythoNOW-{self.local_mac}"            # Base MQTT topic (finalized in prepare() when MQTT configured)
+    self.mqtt_topic_send     = self.mqtt_topic_base + "/send"            # MQTT topic for sending ESP-NOW messages via MQTT
+    self.mqtt_discard_empty  = True                                     # Discard messages with no data
     self.last_message_OUI    = b"\xFF\xFF\xFF"                           # Stash of las messages OUI
     try:
       self.OUI_              = organization                              # Replace the default ESP-NOW organization ID, 18FE34
@@ -451,28 +454,79 @@ class ESPythoNow:
 
 
 
-  # Experimental support for sending ESP-NOW messages on MQTT receive
-  # work in progress
-  def mqtt_on_message(self, client, userdata, msg):
+  # Parse an MQTT send topic + payload into a sendable command, or None if invalid.
+  # Supported topics (relative to mqtt_topic_send, e.g. ESPythoNOW-<mac>/send):
+  #   <mqtt_topic_send>/<mac>       -> send payload as raw bytes
+  #   <mqtt_topic_send>/<mac>/hex   -> parse payload hex text into bytes, then send
+  # Returns {"mac": <mac>, "msg": <bytes>, "mode": "raw"|"hex"} or None for any invalid input.
+  def parse_mqtt_send_message(self, topic, payload):
+    if not topic or not topic.startswith(self.mqtt_topic_send):
+      return None
 
-    # Discard empty message
-    if self.mqtt_discard_empty and not msg:
+    parts = topic.split(self.mqtt_topic_send)[1].split("/")[1:]
+
+    # Determine mode and MAC based on topic shape
+    if len(parts) == 1:
+      mode = "raw"
+      mac  = parts[0]
+    elif len(parts) == 2 and parts[1] == "hex":
+      mode = "hex"
+      mac  = parts[0]
+    else:
+      return None
+
+    # Validate MAC
+    if not self.is_valid_mac(mac):
+      return None
+
+    # Normalize payload to bytes
+    if payload is None:
+      return None
+    if isinstance(payload, (bytes, bytearray)):
+      payload_bytes = bytes(payload)
+    elif isinstance(payload, str):
+      payload_bytes = payload.encode()
+    else:
+      return None
+
+    # Reject empty payload (mqtt_discard_empty is always True)
+    if self.mqtt_discard_empty and len(payload_bytes) == 0:
+      return None
+
+    # Build the message bytes per mode
+    if mode == "hex":
+      try:
+        hex_text = payload_bytes.decode("ascii")
+      except UnicodeDecodeError:
+        return None
+      hex_clean = "".join(hex_text.split()).replace(":", "")
+      if len(hex_clean) == 0 or len(hex_clean) % 2 != 0:
+        return None
+      try:
+        msg = bytes.fromhex(hex_clean)
+      except ValueError:
+        return None
+      if len(msg) == 0:
+        return None
+    else:
+      msg = payload_bytes
+
+    return {"mac": mac, "msg": msg, "mode": mode}
+
+
+
+  # MQTT -> ESP-NOW bridge: parse incoming MQTT message and send over ESP-NOW
+  def mqtt_on_message(self, client, userdata, msg):
+    parsed = self.parse_mqtt_send_message(msg.topic, msg.payload)
+    if parsed is None:
       return
 
-    if msg.topic.startswith(self.mqtt_topic_send):
+    if parsed["mode"] == "hex":
+      print(f"MQTT->ESP-NOW: {parsed['mac']} (hex) {parsed['msg'].hex(' ')}")
+    else:
+      print(f"MQTT->ESP-NOW: {parsed['mac']} (raw) {parsed['msg']}")
 
-      macs = msg.topic.split(self.mqtt_topic_send)[1].split("/")[1:]
-      # Validates that topic ESPythoNOW/send/AA:AA:AA:AA:AA:AA(/BB:BB:BB:BB:BB:BB) contains valid MAC addresses
-      if not all(self.is_valid_mac(mac) for mac in macs):
-        print("Invalid macs")
-        return
-
-      if len(macs) == 1:
-        print(f"MQTT->ESP-NOW: {macs[0]} - {msg.payload}")
-        self.send(macs[0], msg.payload)
-
-      #elif len(macs) == 2:
-      #  print(f"Dual MAC: {macs[0]} -> {macs[1]}, Data: {msg.payload}")
+    self.send(parsed["mac"], parsed["msg"])
 
 
 
