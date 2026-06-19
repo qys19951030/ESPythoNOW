@@ -656,12 +656,33 @@ class ESPythoNow:
 
 
   # Add message signature and signature callback
-  def add_signature(self, name, callback, data=None, dedupe=10): # dedupe should be more like recent history filter
-    if name not in self.decoders:
-      print("Unknown decoder")
-      return False
-    self.decoders[name]["callback"] = callback
-    self.decoders[name]["data"]     = data # actually should be "return data type"
+  def add_signature(self, name, callback, data=None, dedupe=None):
+    if isinstance(name, dict):
+      profile = name
+      profile_name = profile.get("name", f"custom_{len(self.decoders)}")
+      self.decoders[profile_name] = profile
+      dec = self.decoders[profile_name]
+    else:
+      if name not in self.decoders:
+        print("Unknown decoder")
+        return False
+      dec = self.decoders[name]
+
+    dec["callback"] = callback
+    dec["data"]     = data
+
+    if dedupe is not None:
+      if dedupe is False or dedupe == 0:
+        dec.pop("dedupe", None)
+        dec.pop("recent", None)
+      else:
+        dedupe_value = 10 if dedupe is True else int(dedupe)
+        dec["dedupe"] = dedupe_value
+        dec["recent"] = collections.deque(maxlen=dedupe_value)
+    elif "dedupe" in dec and "recent" not in dec:
+      dec["recent"] = collections.deque(maxlen=dec["dedupe"])
+
+    return True
 
 
 

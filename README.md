@@ -119,41 +119,65 @@ Assorted Details
 ---
 Message Signatures/Decoders / callback data types
 ---
+
+`add_signature()` supports two ways to register a decoder:
+
+### 1. Using built-in decoder names
+
+Pass a string name of a built-in decoder (e.g., `"wizmote"`, `"wiz_motion"`):
+
 ```python
-# Get Wizmote data as a dict
+from ESPythoNOW import *
 
 def wizmote_callback(from_mac, to_mac, data):
   print(from_mac, to_mac, "Wizmote callback handler", data)
 
 espnow = ESPythoNow(interface="wlan1", accept_all=True)
-espnow.add_signature(known_profiles["wizmote"], wizmote_callback, data="dict", dedupe=True)
-#espnow.add_signature(known_profiles["wizmote"], wizmote_callback, data="json", dedupe=True) # or as json
-#espnow.add_signature(known_profiles["wizmote"], wizmote_callback, data="raw", dedupe=False) # or raw bytes
-#espnow.add_signature(known_profiles["wizmote"], wizmote_callback, data="hex", dedupe=False) # or hex
+
+# Register by built-in name
+espnow.add_signature("wizmote", wizmote_callback, data="dict", dedupe=10)
+# espnow.add_signature("wizmote", wizmote_callback, data="json", dedupe=True)   # or as json
+# espnow.add_signature("wizmote", wizmote_callback, data="raw",  dedupe=False)  # or raw bytes, no dedupe
+# espnow.add_signature("wizmote", wizmote_callback, data="hex",  dedupe=False)  # or hex
 
 espnow.start()
-
 ```
 
+### 2. Using custom profile dict
+
+Pass a custom profile dict directly to register a new signature:
+
 ```python
-# Get Wiz PIR motion sensor data
-# Provide a custom profile that can detect/fingerprint ESP-NOW messsages as well as decode them
+from ESPythoNOW import *
+
+# Define a custom profile that can detect/fingerprint ESP-NOW messages and decode them
 custom_profile = {
-  "wiz_motion":{
-    "name": "wiz motion sensor",
-    "struct": "<BIBBBBBBBB4s",
-    "vars": ["type", "sequence", "dt1", "_0", "_1", "_2", "motion", "_3", "_4", "_5", "ccm"],
-    "dict": {"motion": {0x0b: True, 0x19: True, 0x0a: False, 0x18: False}}, # 0x0b RT Motion | 0x19 LT Motion | 0x0a RT Clear | 0x18 LT Clear
-    "signature": {"length": 17, "bytes": {0: 0x81, 5: 0x42}}}}
+  "name": "wiz motion sensor",
+  "struct": "<BIBBBBBBBB4s",
+  "vars": ["type", "sequence", "dt1", "_0", "_1", "_2", "motion", "_3", "_4", "_5", "ccm"],
+  "dict": {"motion": {0x0b: True, 0x19: True, 0x0a: False, 0x18: False}},
+  "signature": {"length": 17, "bytes": {0: 0x81, 5: 0x42}}
+}
 
 def wiz_motion_callback(from_mac, to_mac, data):
   print(from_mac, to_mac, "Wiz Motion callback handler", data)
 
 espnow = ESPythoNow(interface="wlan1", accept_all=True)
-espnow.add_signature(custom_profile["wiz_motion"], wiz_motion_callback, data="dict", dedupe=True)
-espnow.start()
 
+# Register by passing the profile dict directly
+espnow.add_signature(custom_profile, wiz_motion_callback, data="dict", dedupe=20)
+espnow.start()
 ```
+
+### `dedupe` parameter
+
+The `dedupe` parameter controls duplicate message filtering for this signature:
+
+- `dedupe=False` or `dedupe=0`: Disable duplicate filtering
+- `dedupe=True`: Enable with default buffer size (10)
+- `dedupe=N` (integer): Enable with custom buffer size of N recent messages
+
+The `dedupe` value you pass overrides any default set in the profile.
 
 
 
