@@ -52,10 +52,11 @@ Sending ESP-NOW messages from MQTT:
 
 * `<mac>` may be in `AA:BB:CC:DD:EE:FF` or `AABBCCDDEEFF` form.
 * To send a message, publish message to `<base_topic>/send/<mac>` (raw) or `<base_topic>/send/<mac>/hex` (hex text).
+* **Exact topic match required.** The `send` segment must end with `/`. Topics such as `<base_topic>/sendx/<mac>`, `<base_topic>/sender/<mac>`, `<base_topic>/sendfoo/<mac>/hex`, or any variant that appends characters before the next `/` are NOT recognized and will be silently ignored.
 
 Invalid inputs are silently rejected and will NOT trigger an ESP-NOW send:
 * Empty payload
 * Invalid MAC address
 * Invalid hex text (non-hex characters or odd length)
-* Topics that do not match the `<base_topic>/send/<mac>` or `<base_topic>/send/<mac>/hex` convention
+* Topics that do not **exactly** match the `<base_topic>/send/<mac>` or `<base_topic>/send/<mac>/hex` convention (including ambiguous send-prefix variants like `sendx`, `sender`, `sendfoo`)
 

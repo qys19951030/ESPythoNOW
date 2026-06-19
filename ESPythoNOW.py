@@ -455,21 +455,29 @@ class ESPythoNow:
 
 
   # Parse an MQTT send topic + payload into a sendable command, or None if invalid.
-  # Supported topics (relative to mqtt_topic_send, e.g. ESPythoNOW-<mac>/send):
+  # Supported topics (mqtt_topic_send is e.g. "ESPythoNOW-<mac>/send"):
   #   <mqtt_topic_send>/<mac>       -> send payload as raw bytes
   #   <mqtt_topic_send>/<mac>/hex   -> parse payload hex text into bytes, then send
+  # Topic must match EXACTLY after the send prefix ("/" boundary required, no extra chars).
   # Returns {"mac": <mac>, "msg": <bytes>, "mode": "raw"|"hex"} or None for any invalid input.
   def parse_mqtt_send_message(self, topic, payload):
-    if not topic or not topic.startswith(self.mqtt_topic_send):
+    if not topic:
       return None
 
-    parts = topic.split(self.mqtt_topic_send)[1].split("/")[1:]
+    # Enforce exact path boundary: topic must start with "<send_prefix>/"
+    send_with_slash = self.mqtt_topic_send + "/"
+    if not topic.startswith(send_with_slash):
+      return None
+
+    tail = topic[len(send_with_slash):]
+
+    parts = tail.split("/")
 
     # Determine mode and MAC based on topic shape
-    if len(parts) == 1:
+    if len(parts) == 1 and parts[0] != "":
       mode = "raw"
       mac  = parts[0]
-    elif len(parts) == 2 and parts[1] == "hex":
+    elif len(parts) == 2 and parts[1] == "hex" and parts[0] != "":
       mode = "hex"
       mac  = parts[0]
     else:

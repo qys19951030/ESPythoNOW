@@ -133,6 +133,30 @@ for label, topic, payload in cases:
     check(f"parse None [{label}]", parse(e, topic, payload) is None)
 
 # ---------------------------------------------------------------------------
+print("\n--- Group 3b: ambiguous send prefix rejection (no send allowed) ---")
+
+ambiguous_cases = [
+    ("sendx prefix",        f"{BASE}/sendx/AABBCCDDEEFF",            b"\x01"),
+    ("sender prefix",       f"{BASE}/sender/AABBCCDDEEFF",           b"\x01"),
+    ("sendfoo prefix raw",  f"{BASE}/sendfoo/AABBCCDDEEFF",          b"\x01"),
+    ("sendfoo prefix hex",  f"{BASE}/sendfoo/AABBCCDDEEFF/hex",      b"01 02"),
+    ("sendable prefix raw", f"{BASE}/sendable/AABBCCDDEEFF",         b"\x01"),
+    ("send_ prefix raw",    f"{BASE}/send_/AABBCCDDEEFF",            b"\x01"),
+    ("send1 prefix hex",    f"{BASE}/send1/AABBCCDDEEFF/hex",        b"01 02"),
+    ("no slash after send", f"{BASE}/sendAABBCCDDEEFF",              b"\x01"),
+    ("no slash after send hex", f"{BASE}/sendAABBCCDDEEFF/hex",      b"01 02"),
+]
+
+for label, topic, payload in ambiguous_cases:
+    e = make_espnow()
+    e.mqtt_on_message(None, None, FakeMsg(topic, payload))
+    check(f"ambiguous [{label}]: send NOT called", e.send.call_count == 0)
+
+for label, topic, payload in ambiguous_cases:
+    e = make_espnow()
+    check(f"ambiguous parse None [{label}]", parse(e, topic, payload) is None)
+
+# ---------------------------------------------------------------------------
 print("\n--- Group 4: edge cases that SHOULD send ---")
 
 # hex with mixed spaces/colons/newlines
